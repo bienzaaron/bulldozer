@@ -38,8 +38,18 @@ func UpdatePR(ctx context.Context, pullCtx pull.Context, client *github.Client, 
 	}
 
 	if pr.Head.Repo.GetFork() {
-		logger.Debug().Msg("Pull request is from a fork, cannot keep it up to date with base ref")
-		return false
+		logger.Debug().Msg("Pull request is from a fork - determining if we have push access")
+		repo, _, err := client.Repositories.Get(ctx, pullCtx.Owner(), pullCtx.Repo())
+		if err != nil {
+			logger.Error().Err(errors.WithStack(err)).Msgf("Failed to retrieve repo details for pull request %q", pullCtx.Locator())
+			return false
+		}
+		if repo.Permissions["push"] {
+			logger.Debug().Msg("Pull request is from a fork, but has push permissions, attempting to update")
+		} else {
+			logger.Debug().Msg("Pull request is from a fork and no push permissions, cannot keep it up to date with base ref")
+			return false
+		}
 	}
 
 	comparison, _, err := client.Repositories.CompareCommits(ctx, pullCtx.Owner(), pullCtx.Repo(), baseRef, pr.GetHead().GetSHA(), nil)
